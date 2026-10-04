@@ -37,23 +37,22 @@ function _G.GML_GetID(id)
 	return -1
 end
 
-Event("PreCreate_0.gml", "@pre_create")
-Event("Create_0.gml", "@create")
-Event("Destroy_0.gml", "@destroy")
-Event("CleanUp_0.gml", "@cleanup")
+Event("PreCreate_0.gml", 	"@pre_create")
+Event("Create_0.gml", 		"@create")
+Event("Destroy_0.gml", 		"@destroy")
+Event("CleanUp_0.gml", 		"@cleanup")
 
 for i=0, 10 do
 	Event("Alarm_"..i..".gml", "@alarm["..i.."]")
 end
 
-Event("Step_0.gml", "@step")
-Event("Step_1.gml", "@step_begin")
-Event("Step_2.gml", "@step_end")
-
-Event("Draw_0.gml", "@draw")
-Event("Draw_1.gml", "@draw_begin")
-Event("Draw_2.gml", "@draw_end")
-Event("Draw_64.gml", "@draw_gui")
-Event("Draw_65.gml", "@draw_gui_begin")
-Event("Draw_66.gml", "@draw_gui_end")
+Event("Step_0.gml", 		"@step")
+Event("Step_1.gml", 		"@step_begin")
+Event("Step_2.gml", 		"@step_end")
+Event("Draw_0.gml", 		"@draw")
+Event("Draw_1.gml", 		"@draw_begin")
+Event("Draw_2.gml", 		"@draw_end")
+Event("Draw_64.gml", 		"@draw_gui")
+Event("Draw_65.gml", 		"@draw_gui_begin")
+Event("Draw_66.gml", 		"@draw_gui_end")
 

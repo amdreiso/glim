@@ -1,80 +1,17 @@
 #!/usr/bin/env lua
 
 require("src.utils")
+require("src.cmd")
+
 local lfs = require("lfs")
 local cwd = lfs.currentdir()
 
 local VERSION = "0.1"
 
-function CMD_Init()
-	local path = cwd .. "/.gm/"
-	if FolderExists(path) then
-		print("Could not initialize glim.")
-		print("path '" .. path .. "' already exists in this directory.")
-		return
-	end
-	os.execute("mkdir -p " .. path)
-	os.execute("touch ./.gm/PATH")
-	os.execute("touch ./.gm/TARGET")
-	os.execute("mkdir -p ./.gm/project")
-	print("Glim initialized at '" .. path .. "'")
-end
-
-function CMD_Remove()
-	local path = cwd .. "/.gm/"
-	if FolderExists(path) then
-		os.execute("rm -rf " .. path)
-		print("Removed successfully.")
-		return
-	end
-	print("No glim file system exists in current directory.")
-end
-
-function CMD_Load()
-	local file = ".gm/TARGET"
-	file = io.open(file, "r")
-	local path_sh = file:read("*a"):gsub("%s+$", "")
-	file:close()
-	
-	local obj = path_sh .. "objects"
-	local scr = path_sh .. "scripts" 
-
-	os.execute("cp -rf " .. obj .. " .gm/project/")
-	os.execute("find " .. ".gm/project/objects" .. " -type f -name '*.yy' -delete")
-
-	os.execute("cp -rf " .. scr .. " .gm/project/")
-	os.execute("find " .. ".gm/project/scripts" .. " -type f -name '*.yy' -delete")
-end
-
-function CMD_Set()
-	if #arg < 2 then
-		print("Usage:")
-		print("  set <path to project>")
-		return
-	end
-	local path = arg[2]
-	local path_sh = path:gsub(" ", "\\ ")
-	if not FolderExists(path) then
-		print("Path '" .. path .."' does not exist.")
-		return
-	end
-	print("Path '" .. path .."' set as target.")
-	local target = cwd .. "/" .. path_sh
-	target = target:gsub("//", "/")
-	print(target)
-	os.execute("echo '" .. target .. "' > .gm/TARGET")
-	CMD_Load()
-	ConvertObjectsFolder()
-	ConvertScriptsFolder()
-end
-
-function CMD_Sync()
-end
-
-function CMD_Status()
-end
-
 function ConvertObject(path)
+	if not FolderExists(path) then
+		return
+	end
 	print("Converting Object '"..path.."'")
 	local dirname = path:match("([^/]+)/?$")
 	local newfilename = dirname .. ".gml"
@@ -130,9 +67,15 @@ end
 
 function ConvertObjectsFolder()
 	local path = cwd .. "/.gm/project/objects/"
+	if not FolderExists(path) then
+		return
+	end
 
 	for file in lfs.dir(path) do
-		if file ~= "." and file ~= ".." and lfs.attributes(path, "mode") == "directory" then
+		if  	file ~= "." 
+			and file ~= ".." 
+			and lfs.attributes(path, "mode") == "directory" then
+
 			local name = file:gsub("%..*$", "")
 			ConvertObject(path..file)
 		end
@@ -140,26 +83,71 @@ function ConvertObjectsFolder()
 end
 
 function RestoreObject(path)
+	local filename = path:match("([^/]+)/?$")
+	print("Restoring '"..filename.."' object")
 	local file = io.open(path, "r")
-	local content = file:read()
+	local content = file:read("*a")
 	file:close()
-end
 
-RestoreObject("/home/andy/programming/glim/demo/Spaceship.gml")
+	local events = {}
+	local currentEvent = nil
+	local code = {}
 
-function ConvertScriptsFolder()
-	local path = cwd .. "/.gm/project/scripts/"
-
-	for file in lfs.dir(path) do
-		if file ~= "." and file ~= ".." and lfs.attributes(path, "mode") == "directory" then
-			os.execute("mv "..path..file.."/* ../")
+	for line in (content .. "\n"):gmatch("(.-)\n") do
+		local event = line:match("^@([%w_]+)%s*$")
+		if event then
+			if currentEvent then
+				events[currentEvent] = table.concat(code, "\n")
+			end
+			currentEvent = event
+			code = {}
+		elseif currentEvent then
+			table.insert(code, line)
+		end
+	end
+	
+	if currentEvent then
+		events[currentEvent] = table.concat(code, "\n")
+	end
+	
+	local foldername = filename:gsub("%.gml$", "")
+	local folderpath = cwd.."/.gm/.diffs/objects/"..foldername.."/"
+	os.execute("mkdir "..folderpath.." 2>/dev/null")
+	
+	for event, code in pairs(events) do
+		local id = GML_GetID("@"..event).file
+		local file = io.open(folderpath..id, "w")
+		if file then
+			code = code.."\n"
+			file:write(code)
+			file:close()
 		end
 	end
 end
 
-function CMD_Version()
-	print("Glim "..VERSION.."v")
-	print("Made by Andrei Scatolin")
+function RestoreObjectsFolder()
+	local path = cwd .. "/.gm/project/objects/"
+
+	for file in lfs.dir(path) do
+		if file ~= "." and file ~= ".." then
+			RestoreObject(path..file)
+		end
+	end
+end
+
+
+function ConvertScriptsFolder()
+	local path = cwd .. "/.gm/project/scripts/"
+	if not FolderExists(path) then
+		return
+	end
+
+	for file in lfs.dir(path) do
+		if file ~= "." and file ~= ".." and lfs.attributes(path, "mode") == "directory" then
+			os.execute("mv "..path..file.."/* "..path)
+			os.execute("rm -r "..path..file)
+		end
+	end
 end
 
 local commands = {
@@ -168,7 +156,8 @@ local commands = {
 	{"set", 		CMD_Set, 		"Set project target path"},
 	{"status", 		CMD_Status,		"See status"},
 	{"remove", 		CMD_Remove,		"Removes .gm folder"},
-	{"version", 	CMD_Version,	"Print version"},
+	{"version", 	CMD_Version,	"See version"},
+	{"restore", 	RestoreObjectsFolder,	"See version"},
 }
 
 function PrintUsage()

@@ -5,7 +5,7 @@ local cwd = lfs.currentdir()
 local gmdir = cwd .. "/.gm/"
 
 -- Utils
-local VERSION = "0.2"
+local VERSION = "0.3"
 
 local function Input(str)
 	io.write(str)
@@ -164,6 +164,7 @@ function CMD_Set()
 	CMD_Load()
 	ConvertObjectsFolder()
 	ConvertScriptsFolder()
+	print("Start coding in '.gm/project/' :D")
 end
 
 function CMD_Sync()

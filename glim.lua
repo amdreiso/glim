@@ -168,6 +168,7 @@ function CMD_Version()
 end
 
 -- Converting and Recovering gamemaker objects and scripts
+-- Objects
 function ConvertObject(path)
 	if not FolderExists(path) then
 		return
@@ -295,6 +296,7 @@ function RestoreObjectsFolder()
 	end
 end
 
+-- Scripts
 function ConvertScriptsFolder()
 	local path = cwd .. "/.gm/project/scripts/"
 	if not FolderExists(path) then
@@ -315,12 +317,12 @@ function RestoreScriptsFolder()
 	if not FolderExists(path) then
 		return
 	end
-
+	
 	for file in lfs.dir(path) do
 		if file ~= "." and file ~= ".." then 
 			print(TERM.dim.."- Restoring '"..file.."' [SCRIPT]"..TERM.reset)
 			local foldername = file:gsub("%.gml", "")
-
+			
 			-- Read content from script file
 			local f = io.open(path..file)
 			local content = f:read("*a")
@@ -328,7 +330,7 @@ function RestoreScriptsFolder()
 
 			-- Create script folder in diffs/scripts
 			os.execute("mkdir "..to..foldername.." 2>/dev/null")
-
+			
 			-- Write file inside script folder
 			local filepath = to..foldername.."/"..file
 			local scr = io.open(filepath, "w")
@@ -343,19 +345,19 @@ function RestoreScriptsFolder()
 end
 
 function CMD_Restore()
-	print("====================== OBJECTS ======================")
+	print(TERM.bold.."====================== OBJECTS ======================")
 	RestoreObjectsFolder()
-	print("====================== SCRIPTS ======================")
+	print(TERM.bold.."====================== SCRIPTS ======================")
 	RestoreScriptsFolder()
 end
 
 local commands = {
-	{"init", 		CMD_Init, 		"Initializes project in current directory"},
+	{"init", 		CMD_Init, 		"Initializes glim in current directory"},
 	{"remove", 		CMD_Remove,		"Removes .gm folder"},
-	{"set", 		CMD_Set, 		"Set project target path"},
+	{"set", 		CMD_Set, 		"Set gamemaker project path and convert objects and scripts into .gm/project/"},
 	{"status", 		CMD_Status,		"See status"},
+	{"restore", 	CMD_Restore,	"Restore converted files to gamemaker compatible structure in .gm/.diffs/"},
 	{"sync", 		CMD_Sync,		"Sync files with project target"},
-	{"restore", 	CMD_Restore,	"Restore converted files to gamemaker compatible structure in .gm/.diffs"},
 	{"version", 	CMD_Version,	"See version"},
 }
 
@@ -364,7 +366,6 @@ function PrintUsage()
 	for i=1, #commands do
 		print("    " .. TERM.bold .. commands[i][1] .. TERM.reset .. " - " .. TERM.dim .. commands[i][3] .. TERM.reset)
 	end
-	print(TERM.bold.."\nAuthor: Andrei Scatolin"..TERM.reset)
 end
 
 function Run() 
@@ -382,4 +383,3 @@ function Run()
 end
 
 Run()
-

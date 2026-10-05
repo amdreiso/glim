@@ -7,6 +7,11 @@ local gmdir = cwd .. "/.gm/"
 -- Utils
 local VERSION = "0.2"
 
+local function Input(str)
+	io.write(str)
+	return io.read()
+end
+
 _G.TERM = {
 	reset = "\27[0m",
 	red = "\27[31m",
@@ -74,6 +79,20 @@ Event("Draw_65.gml", 		"@draw_gui_begin")
 Event("Draw_66.gml", 		"@draw_gui_end")
 
 -- Commands
+function WriteProjectConfig(config)
+  	local file = io.open(gmdir.."config.lua", "w")
+  	file:write("return {\n")
+  	for key, value in pairs(config) do
+  		file:write("\t" .. key .. " = " .. string.format("%q", value) .. ",\n")
+  	end
+  	file:write("}\n")
+  	file:close()
+end
+
+function ReadProjectConfig()
+	return dofile(gmdir.."config.lua")
+end
+
 function CMD_Init()
 	local path = gmdir
 	if FolderExists(path) then
@@ -87,6 +106,11 @@ function CMD_Init()
 	os.execute("mkdir -p ./.gm/.diffs")
 	os.execute("mkdir -p ./.gm/.diffs/objects")
 	os.execute("mkdir -p ./.gm/.diffs/scripts")
+	print(TERM.bold.."Project Info: "..TERM.reset)
+	WriteProjectConfig({
+		name 	= Input(" > name: "),
+		author 	= Input(" > author: "),
+	})
 	print("Glim initialized at '" .. path .. "'")
 end
 
@@ -143,6 +167,8 @@ function CMD_Set()
 end
 
 function CMD_Sync()
+	CMD_Restore()
+
 	local target  = gmdir..".TARGET"
 	local objects = gmdir..".diffs/objects/*"
 	local scripts = gmdir..".diffs/scripts/*"
@@ -161,6 +187,15 @@ function CMD_Sync()
 end
 
 function CMD_Status()
+	if not FolderExists(gmdir) then
+		print("Glim was not initialized in this folder.")
+		print("Try: 'glim init'")
+		return
+	end
+	local config = ReadProjectConfig()
+	print(TERM.bold.."====================== "..config.name.." ======================"..TERM.reset)
+	print(TERM.dim.."made by "..TERM.reset..config.author)
+	print("")
 end
 
 function CMD_Version()
@@ -351,15 +386,35 @@ function CMD_Restore()
 	RestoreScriptsFolder()
 end
 
+function CMD_Clean()
+	local objects = gmdir..".diffs/objects/"
+	local scripts = gmdir..".diffs/scripts/"
+	if FolderExists(objects) then
+		os.execute("rm -r "..objects.."* 2>/dev/null")
+	end
+	if FolderExists(scripts) then
+		os.execute("rm -r "..scripts.."* 2>/dev/null")
+	end
+	print("Cleaned.")
+end
+
 local commands = {
 	{"init", 		CMD_Init, 		"Initializes glim in current directory"},
 	{"remove", 		CMD_Remove,		"Removes .gm folder"},
 	{"set", 		CMD_Set, 		"Set gamemaker project path and convert objects and scripts into .gm/project/"},
-	{"status", 		CMD_Status,		"See status"},
+	{"status", 		CMD_Status,		"See project status"},
 	{"restore", 	CMD_Restore,	"Restore converted files to gamemaker compatible structure in .gm/.diffs/"},
 	{"sync", 		CMD_Sync,		"Sync files with project target"},
+	{"clean", 		CMD_Clean,		"Cleans generated files in .diffs/"},
 	{"version", 	CMD_Version,	"See version"},
 }
+
+if arg[1] == "__complete" then
+    for _, cmd in ipairs(commands) do
+        print(cmd[1])
+    end
+    os.exit(0)
+end
 
 function PrintUsage()
 	print("Usage:")
@@ -374,6 +429,12 @@ function Run()
 		if cmd[1] == arg[1] then
 			cmd[2]()
 			found = true
+		end
+		if arg[1] == "__complete" then
+			for _, cmd in ipairs(commands) do
+				print(cmd[1])
+			end
+			os.exit(0)
 		end
 	end
 

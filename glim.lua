@@ -280,7 +280,7 @@ end
 
 function RestoreObject(path)
 	local filename = path:match("([^/]+)/?$")
-	print(TERM.dim.."- Restoring '"..filename.."' [OBJECT]"..TERM.reset)
+	print(TERM.dim.."- Restoring '"..filename..TERM.blue.."' [OBJECT]"..TERM.reset)
 	local file = io.open(path, "r")
 	local content = file:read("*a")
 	file:close()
@@ -355,7 +355,7 @@ function RestoreScriptsFolder()
 	
 	for file in lfs.dir(path) do
 		if file ~= "." and file ~= ".." then 
-			print(TERM.dim.."- Restoring '"..file.."' [SCRIPT]"..TERM.reset)
+			print(TERM.dim.."- Restoring '"..file..TERM.red.."' [SCRIPT]"..TERM.reset)
 			local foldername = file:gsub("%.gml", "")
 			
 			-- Read content from script file
@@ -380,9 +380,9 @@ function RestoreScriptsFolder()
 end
 
 function CMD_Restore()
-	print(TERM.bold.."====================== OBJECTS ======================")
+	print(TERM.bold.."====================== OBJECTS ======================"..TERM.reset)
 	RestoreObjectsFolder()
-	print(TERM.bold.."====================== SCRIPTS ======================")
+	print(TERM.bold.."====================== SCRIPTS ======================"..TERM.reset)
 	RestoreScriptsFolder()
 end
 
@@ -398,13 +398,22 @@ function CMD_Clean()
 	print("Cleaned.")
 end
 
+function CMD_Reload()
+	os.execute("rm -r "..gmdir.."project/objects/*")
+	os.execute("rm -r "..gmdir.."project/scripts/*")
+	CMD_Load()
+	ConvertObjectsFolder()
+	ConvertScriptsFolder()
+end
+
 local commands = {
 	{"init", 		CMD_Init, 		"Initializes glim in current directory"},
 	{"remove", 		CMD_Remove,		"Removes .gm folder"},
-	{"set", 		CMD_Set, 		"Set gamemaker project path and convert objects and scripts into .gm/project/"},
+	{"set", 		CMD_Set, 		"Set GameMaker project path and convert objects and scripts into .gm/project/"},
 	{"status", 		CMD_Status,		"See project status"},
-	{"restore", 	CMD_Restore,	"Restore converted files to gamemaker compatible structure in .gm/.diffs/"},
+	{"convert", 	CMD_Restore,	"Converts .gm/project to GameMaker compatible structure in .gm/.diffs/"},
 	{"sync", 		CMD_Sync,		"Sync files with project target"},
+	{"reload", 		CMD_Reload,		"Reload files from target GameMaker project (erases any progress in .gm/project/)"},
 	{"clean", 		CMD_Clean,		"Cleans generated files in .diffs/"},
 	{"version", 	CMD_Version,	"See version"},
 }

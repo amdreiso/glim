@@ -67,7 +67,7 @@ Event("PreCreate_0.gml", 	"@pre_create")
 Event("Create_0.gml", 		"@create")
 Event("Destroy_0.gml", 		"@destroy")
 Event("CleanUp_0.gml", 		"@cleanup")
-for i=0, 10 do Event("Alarm_"..i..".gml", "@alarm["..i.."]") end
+for i=0, 10 do Event("Alarm_"..i..".gml", "@alarm_"..i) end
 Event("Step_0.gml", 		"@step")
 Event("Step_1.gml", 		"@step_begin")
 Event("Step_2.gml", 		"@step_end")
@@ -209,10 +209,13 @@ function ConvertObject(path)
 	if not FolderExists(path) then
 		return
 	end
-	print("Converting Object '"..path.."'")
 	local dirname = path:match("([^/]+)/?$")
 	local newfilename = dirname .. ".gml"
 	local newfilepath = cwd .. "/.gm/project/objects/" .. newfilename
+	if FileExists(newfilepath) then
+		print(TERM.blue.." [OBJECT] "..TERM.reset..newfilename..TERM.dim.." already exists."..TERM.reset)
+		return
+	end
 	local newfile = io.open(newfilepath, "w")
 	local FILES = {}
 
@@ -245,8 +248,8 @@ function ConvertObject(path)
 		if f then
 			local content = f:read("*a")
 			content = content:gsub("\r", "")
-			filecontent = filecontent .. file.id .. "\n"
-			filecontent = filecontent .. content .. "\n"
+			content = content:gsub("\n+$", "").."\n"
+			filecontent = filecontent..file.id.."\n"..content
 			f:close()
 		else
 			print("Could not open file '"..file.path.."'")
@@ -259,7 +262,7 @@ function ConvertObject(path)
 	os.execute("rm -r "..path)
 
 	local size = lfs.attributes(newfilepath, "size")
-	print(newfilename.." was generated from '"..dirname.."' with "..size.." bytes")
+	print(TERM.blue.." [OBJECT] "..TERM.reset..newfilename..TERM.dim.." was generated with "..TERM.bold..size.." bytes"..TERM.reset)
 end
 
 function ConvertObjectsFolder()
@@ -282,6 +285,9 @@ end
 function RestoreObject(path)
 	local filename = path:match("([^/]+)/?$")
 	print(TERM.dim.."- Restoring '"..filename..TERM.blue.."' [OBJECT]"..TERM.reset)
+	if not FileExists(path) then
+		return
+	end
 	local file = io.open(path, "r")
 	local content = file:read("*a")
 	file:close()
@@ -290,7 +296,8 @@ function RestoreObject(path)
 	local currentEvent = nil
 	local code = {}
 
-	for line in (content .. "\n"):gmatch("(.-)\n") do
+	--for line in (content .. "\n"):gmatch("(.-)\n") do
+	for line in content:gmatch("([^\n]*)\n?") do
 		local event = line:match("^@([%w_]+)%s*$")
 		if event then
 			if currentEvent then
@@ -306,17 +313,17 @@ function RestoreObject(path)
 	if currentEvent then
 		events[currentEvent] = table.concat(code, "\n")
 	end
-	
+
 	local foldername = filename:gsub("%.gml$", "")
 	local folderpath = cwd.."/.gm/.diffs/objects/"..foldername.."/"
 	os.execute("mkdir "..folderpath.." 2>/dev/null")
-	
+
 	for event, code in pairs(events) do
 		local id = GML_GetID("@"..event).file
 		local file = io.open(folderpath..id, "w")
 		if file then
-			code = code.."\n"
-			file:write(code)
+			code = code:gsub("\n+$", "")
+			file:write(code, "\n")
 			file:close()
 		end
 	end
@@ -341,8 +348,11 @@ function ConvertScriptsFolder()
 
 	for file in lfs.dir(path) do
 		if file ~= "." and file ~= ".." and lfs.attributes(path, "mode") == "directory" then
-			os.execute("mv "..path..file.."/* "..path)
-			os.execute("rm -r "..path..file)
+			if FolderExists(path..file) then
+				os.execute("mv "..path..file.."/* "..path)
+				os.execute("rm -r "..path..file)
+				print(TERM.red.." [SCRIPT] "..TERM.reset..file..".gml"..TERM.dim.." was moved."..TERM.reset)
+			end
 		end
 	end
 end
@@ -399,18 +409,31 @@ function CMD_Clean()
 	print("Cleaned.")
 end
 
-function CMD_Reload()
-	os.execute("rm -r "..gmdir.."project/objects/*")
-	os.execute("rm -r "..gmdir.."project/scripts/*")
+function CMD_Reload(flags)
+	local rebase = false
+	for _, val in pairs(flags) do
+		if val == "--rebase" then
+			rebase = true
+			print("Rebase reload")
+		end
+	end
+	if rebase then
+		os.execute("rm -r "..gmdir.."project/objects/*")
+		os.execute("rm -r "..gmdir.."project/scripts/*")
+	end
 	CMD_Load()
 	ConvertObjectsFolder()
 	ConvertScriptsFolder()
+
+	if not rebase then
+		print("\nUse "..TERM.dim.."--rebase"..TERM.reset.." if you want to replace every file with the original GameMaker files")
+	end
 end
 
 local commands = {
 	{"init", 		CMD_Init, 		"Initializes glim in current directory"},
 	{"remove", 		CMD_Remove,		"Removes .gm folder"},
-	{"set", 		CMD_Set, 		"Set GameMaker project path and convert objects and scripts into .gm/project/"},
+	{"set", 		CMD_Set, 		"Set GameMaker project path and convert objects and scripts into .gm/project/", 1},
 	{"status", 		CMD_Status,		"See project status"},
 	{"convert", 	CMD_Restore,	"Converts .gm/project to GameMaker compatible structure in .gm/.diffs/"},
 	{"sync", 		CMD_Sync,		"Sync files with project target"},
@@ -436,8 +459,17 @@ end
 function Run() 
 	local found = false
 	for _, cmd in ipairs(commands) do
-		if cmd[1] == arg[1] then
-			cmd[2]()
+		local name 	= cmd[1]
+		local fn 	= cmd[2]
+		local desc 	= cmd[3]
+		local args 	= cmd[4] or 0
+
+		if name == arg[1] then
+			local flags = {}
+			for i=(2 + args), #arg do
+				table.insert(flags, arg[i])
+			end
+			fn(flags)
 			found = true
 		end
 		if arg[1] == "__complete" then

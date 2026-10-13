@@ -1,18 +1,105 @@
 #!/usr/bin/env lua
 
+-- How this works:
+--
+-- Converting:
+-- GameMaker Object folder   ->     Object.gml (converts Object folder into one file separated by event ids starting with @)    
+-- │                         ->
+-- ├─ Create_0.gml           ->                                         @create
+-- ├─ Step_0.gml             ->                      // code...
+-- ├─ Draw_0.gml             ->                                         @step
+-- └─ Draw_64.gml            ->                      // code... and so on
+-- 
+-- Script -> Removes any \r and trash leftovers, not much to be converted
+--
+-- Restoring:
+-- Restores every object and script back into GameMaker folder format,
+-- and creates Object.yy file with updated, and newly created events
+-- 
+-- GameMaker project exists
+-- Glim sets project path
+-- Glim generates Converted objects/scripts into ".gm/project/"
+-- User does shenanigans with generated objects/scripts
+-- Glim Syncs the project, Restoring objects/scripts 
+
 local lfs = require("lfs")
+local json = require("dkjson")
 local cwd = lfs.currentdir()
 local gmdir = cwd .. "/.gm/"
 
 -- Utils
-local VERSION = "0.3"
+local VERSION = "0.4"
 
 local function Input(str)
 	io.write(str)
 	return io.read()
 end
 
-_G.TERM = {
+local function YY_GetEvent(eventID)
+	local e = GML_GetID(eventID)
+
+	local default = {
+		["$GMEvent"] = "v1",
+		["%Name"] = "",
+		collisionObjectId = json.null,
+		eventNum = 0,
+		eventType = 0,
+		isDnD = false,
+		name = "",
+		resourceType = "GMEvent",
+		resourceVersion = "2.0"
+	}
+
+	default.eventType = e.eventType
+	default.eventNum = e.eventNum
+
+	return default
+end
+
+local function YY_GetObject(name)
+	local default = {
+		["$GMObject"] = "",
+		["%Name"] = name,
+		eventList = {},
+		managed = true,
+		name = name,
+		overriddenProperties = {},
+		parent = {
+		  name = "obj",
+		  path = "folders/obj.yy",
+		},
+		parentObjectId = json.null,
+		persistent = false,
+		physicsAngularDamping = 0.1,
+		physicsDensity = 0.5,
+		physicsFriction = 0.2,
+		physicsGroup = 1,
+		physicsKinematic = false,
+		physicsLinearDamping = 0.1,
+		physicsObject = false,
+		physicsRestitution = 0.1,
+		physicsSensor = false,
+		physicsShape = 1,
+		physicsShapePoints = {},
+		physicsStartAwake = true,
+		properties = {},
+		resourceType = "GMObject",
+		resourceVersion = "2.0",
+		solid = false,
+		spriteId = json.null,
+		spriteMaskId = json.null,
+		visible = true,
+	}
+
+	--table.insert(default.eventList, YY_GetEvent("@create"))
+	--table.insert(default.eventList, YY_GetEvent("@step_begin"))
+	--table.insert(default.eventList, YY_GetEvent("@step"))
+	--table.insert(default.eventList, YY_GetEvent("@draw"))
+
+	return default
+end
+
+TERM = {
 	reset = "\27[0m",
 	red = "\27[31m",
 	green = "\27[32m",
@@ -24,27 +111,19 @@ _G.TERM = {
 	dim = "\27[2m",
 }
 
-function _G.FolderExists(path)
-  local ok = os.execute("test -d '" .. path .. "'")
-  return ok == true or ok == 0
+function FolderExists(path)
+	local ok = os.execute("test -d '" .. path .. "'")
+  	return ok == true or ok == 0
 end
 
-function _G.FileExists(path)
-  local ok = os.execute("test -f '" .. path .. "'")
-  return ok == true or ok == 0
+function FileExists(path)
+  	local ok = os.execute("test -f '" .. path .. "'")
+  	return ok == true or ok == 0
 end
 
-_G.GML_EVENT_ORDER = {} 
+GML_EVENT_ORDER = {} 
 
-function Event(name, id)
-	table.insert(GML_EVENT_ORDER, {
-		file = name,
-		id = id,
-		priority = #GML_EVENT_ORDER,
-	})
-end
-
-function _G.GML_GetFile(filename)
+function GML_GetFile(filename)
 	for _, val in ipairs(GML_EVENT_ORDER) do
 		if val.file == filename then
 			return val
@@ -53,7 +132,7 @@ function _G.GML_GetFile(filename)
 	return -1
 end
 
-function _G.GML_GetID(id)
+function GML_GetID(id)
 	for _, val in ipairs(GML_EVENT_ORDER) do
 		if val.id == id then
 			return val
@@ -62,37 +141,91 @@ function _G.GML_GetID(id)
 	return -1
 end
 
+local EVENT = {
+	CREATE 		= 0,
+	DESTROY 	= 1,
+	ALARM		= 2,
+	STEP 		= 3,
+	DRAW		= 8,
+	OTHER		= 7,
+	CLEAN_UP 	= 12,
+	PRE_CREATE 	= 13,
+}
+
+local eventFilenameID = {}
+eventFilenameID [EVENT.CREATE] 	= "Create"
+eventFilenameID [EVENT.DESTROY] = "Destroy"
+eventFilenameID [EVENT.ALARM] 	= "Alarm"
+eventFilenameID [EVENT.STEP] 	= "Step"
+eventFilenameID [EVENT.DRAW] 	= "Draw"
+eventFilenameID [EVENT.OTHER] 	= "Other"
+eventFilenameID [EVENT.CLEAN_UP] = "CleanUp"
+
+function Event(id, eventType, eventNum)
+	local num = eventNum or 0
+	local name = eventFilenameID [eventType] .. "_" .. tostring(num) .. ".gml"
+
+	table.insert(GML_EVENT_ORDER, {
+		file = name,
+		id = id,
+		eventType = eventType or 0,
+		eventNum = num,
+		priority = #GML_EVENT_ORDER,
+	})
+end
+
 -- Every gamemaker event (kinda)
-Event("PreCreate_0.gml", 	"@pre_create")
-Event("Create_0.gml", 		"@create")
-Event("Destroy_0.gml", 		"@destroy")
-Event("CleanUp_0.gml", 		"@cleanup")
-for i=0, 10 do Event("Alarm_"..i..".gml", "@alarm_"..i) end
-Event("Step_0.gml", 		"@step")
-Event("Step_1.gml", 		"@step_begin")
-Event("Step_2.gml", 		"@step_end")
-Event("Draw_0.gml", 		"@draw")
-Event("Draw_1.gml", 		"@draw_begin")
-Event("Draw_2.gml", 		"@draw_end")
-Event("Draw_64.gml", 		"@draw_gui")
-Event("Draw_65.gml", 		"@draw_gui_begin")
-Event("Draw_66.gml", 		"@draw_gui_end")
+Event("@create", 						EVENT.CREATE,	0)
+Event("@destroy", 						EVENT.DESTROY,	0)
+Event("@cleanup", 						EVENT.CLEAN_UP,	0)
+
+for i=0, 11 do Event("@alarm_"..i, 		EVENT.ALARM, i) end
+
+Event("@step", 							EVENT.STEP, 0)
+Event("@step_begin",					EVENT.STEP, 1)
+Event("@step_end",						EVENT.STEP, 2)
+
+Event("@draw",							EVENT.DRAW, 0)
+Event("@draw_gui",						EVENT.DRAW, 64)
+Event("@window_resize",					EVENT.DRAW, 65)
+Event("@draw_begin",					EVENT.DRAW, 72)
+Event("@draw_end",						EVENT.DRAW, 73)
+Event("@draw_gui_begin",				EVENT.DRAW, 74)
+Event("@draw_gui_end",					EVENT.DRAW, 75)
+Event("@pre_draw",						EVENT.DRAW, 76)
+Event("@post_draw",						EVENT.DRAW, 77)
+
+Event("@outside_room",					EVENT.OTHER, 0)
+Event("@intersect_boundary",			EVENT.OTHER, 1)
+Event("@game_start",					EVENT.OTHER, 2)
+Event("@game_end",						EVENT.OTHER, 3)
+Event("@room_start",					EVENT.OTHER, 4)
+Event("@room_end",						EVENT.OTHER, 5)
+Event("@animation_end",					EVENT.OTHER, 7)
+Event("@path_ended",					EVENT.OTHER, 8)
+Event("@animation_update",				EVENT.OTHER, 58)
+Event("@animation_event",				EVENT.OTHER, 59)
+
+for i=0, 7 do Event("@outside_view_"..i,	EVENT.OTHER, 40+i) end
+
+for i=0, 7 do Event("@intersect_view_"..i,	EVENT.OTHER, 50+i) end
+
+Event("@async_image_loaded",			EVENT.OTHER, 60)
+Event("@async_http",					EVENT.OTHER, 62)
+Event("@async_dialog",					EVENT.OTHER, 63)
+Event("@async_in_app_purchase",			EVENT.OTHER, 66)
+Event("@async_networking",				EVENT.OTHER, 68)
+Event("@async_cloud",					EVENT.OTHER, 67)
+Event("@async_steam",					EVENT.OTHER, 69)
+Event("@async_social",					EVENT.OTHER, 70)
+Event("@async_push_notification",		EVENT.OTHER, 71)
+Event("@async_save_load",				EVENT.OTHER, 72)
+Event("@async_audio_recording",			EVENT.OTHER, 73)
+Event("@async_audio_playback",			EVENT.OTHER, 74)
+Event("@async_system",					EVENT.OTHER, 75)
+Event("@async_audio_playback_ended",	EVENT.OTHER, 80)
 
 -- Commands
-function WriteProjectConfig(config)
-  	local file = io.open(gmdir.."config.lua", "w")
-  	file:write("return {\n")
-  	for key, value in pairs(config) do
-  		file:write("\t" .. key .. " = " .. string.format("%q", value) .. ",\n")
-  	end
-  	file:write("}\n")
-  	file:close()
-end
-
-function ReadProjectConfig()
-	return dofile(gmdir.."config.lua")
-end
-
 function CMD_Init()
 	local path = gmdir
 	if FolderExists(path) then
@@ -106,11 +239,7 @@ function CMD_Init()
 	os.execute("mkdir -p ./.gm/.diffs")
 	os.execute("mkdir -p ./.gm/.diffs/objects")
 	os.execute("mkdir -p ./.gm/.diffs/scripts")
-	print(TERM.bold.."Project Info: "..TERM.reset)
-	WriteProjectConfig({
-		name 	= Input(" > name: "),
-		author 	= Input(" > author: "),
-	})
+
 	print("Glim initialized at '" .. path .. "'")
 end
 
@@ -185,18 +314,6 @@ function CMD_Sync()
 		os.execute("cp -r "..scripts.." "..projectPath.."scripts/")
 	end
 
-end
-
-function CMD_Status()
-	if not FolderExists(gmdir) then
-		print("Glim was not initialized in this folder.")
-		print("Try: 'glim init'")
-		return
-	end
-	local config = ReadProjectConfig()
-	print(TERM.bold.."====================== "..config.name.." ======================"..TERM.reset)
-	print(TERM.dim.."made by "..TERM.reset..config.author)
-	print("")
 end
 
 function CMD_Version()
@@ -434,7 +551,6 @@ local commands = {
 	{"init", 		CMD_Init, 		"Initializes glim in current directory"},
 	{"remove", 		CMD_Remove,		"Removes .gm folder"},
 	{"set", 		CMD_Set, 		"Set GameMaker project path and convert objects and scripts into .gm/project/", 1},
-	{"status", 		CMD_Status,		"See project status"},
 	{"convert", 	CMD_Restore,	"Converts .gm/project to GameMaker compatible structure in .gm/.diffs/"},
 	{"sync", 		CMD_Sync,		"Sync files with project target"},
 	{"reload", 		CMD_Reload,		"Reload files from target GameMaker project (erases any progress in .gm/project/)"},
@@ -486,3 +602,4 @@ function Run()
 end
 
 Run()
+

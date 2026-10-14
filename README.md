@@ -7,6 +7,7 @@ glim is a tool for converting GameMaker projects into a more reasonable Vim frie
 Examples
 
 ![image](schtuff/example0.png)
+![image](schtuff/example1.png)
 
 ## Quickstart
 

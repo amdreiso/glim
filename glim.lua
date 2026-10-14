@@ -22,24 +22,33 @@
 -- User does shenanigans with generated objects/scripts
 -- Glim Syncs the project, Restoring objects/scripts into PATH 
 
-local lfs = require("lfs")
-local json = require("dkjson")
-local cwd = lfs.currentdir()
+local lfs 	= require("lfs")
+local json 	= require("dkjson")
+local cwd 	= lfs.currentdir()
 local gmdir = cwd .. "/.gm/"
 
--- Utils
-local VERSION = "0.5"
+local VERSION = "0.6"
 
 function Input(str)
 	io.write(str)
 	return io.read()
 end
 
-function Path(url)
-	url = url:gsub("\n", "")
-    url = url:gsub("%./", "/")
-    url = url:gsub("/+", "/")
-    return url
+function Path(path)
+	path = path:gsub("\n",  "")
+    path = path:gsub("%./", "/")
+    path = path:gsub("/+",  "/")
+    return path 
+end
+
+function FolderExists(path)
+	local ok = os.execute("test -d '" .. path .. "'")
+  	return ok == true or ok == 0
+end
+
+function FileExists(path)
+  	local ok = os.execute("test -f '" .. path .. "'")
+  	return ok == true or ok == 0
 end
 
 function YY_GetEvent(eventID)
@@ -47,15 +56,15 @@ function YY_GetEvent(eventID)
 	local e = GML_GetID(eventID)
 
 	local default = {
-		["$GMEvent"] = "v1",
-		["%Name"] = "",
-		collisionObjectId = json.null,
-		eventNum = 0,
-		eventType = 0,
-		isDnD = false,
-		name = "",
-		resourceType = "GMEvent",
-		resourceVersion = "2.0"
+		["$GMEvent"] 		= "v1",
+		["%Name"] 			= "",
+		collisionObjectId 	= json.null,
+		eventNum 			= 0,
+		eventType 			= 0,
+		isDnD 				= false,
+		name 				= "",
+		resourceType 		= "GMEvent",
+		resourceVersion 	= "2.0"
 	}
 
 	default.eventType = e.eventType
@@ -66,12 +75,12 @@ end
 
 function YY_GetObject(name, events)
 	local default = {
-		["%Name"] 	= name,
-		name 		= name,
-		eventList 	= {},
-		parentObjectId = json.null,
-		spriteId = json.null,
-		spriteMaskId = json.null
+		["%Name"] 		= name,
+		name 			= name,
+		eventList 		= {},
+		parentObjectId 	= json.null,
+		spriteId 		= json.null,
+		spriteMaskId 	= json.null
 	}
 
 	for i=1, #events do
@@ -92,16 +101,6 @@ local TERM = {
 	bold 	= "\27[1m",
 	dim 	= "\27[2m",
 }
-
-function FolderExists(path)
-	local ok = os.execute("test -d '" .. path .. "'")
-  	return ok == true or ok == 0
-end
-
-function FileExists(path)
-  	local ok = os.execute("test -f '" .. path .. "'")
-  	return ok == true or ok == 0
-end
 
 local GML_EVENT_ORDER = {} 
 

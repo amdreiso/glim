@@ -22,15 +22,96 @@
 -- User does shenanigans with generated objects/scripts
 -- Glim Syncs the project, Restoring objects/scripts into PATH 
 
+local source = debug.getinfo(1, "S").source:sub(2)
+local dir = source:match("(.*/)")
+
+package.path = dir .. "?.lua;" .. package.path
+
 local lfs 	= require("lfs")
 local json 	= require("dkjson")
 local cwd 	= lfs.currentdir()
-local gmdir = cwd .. "/.gm/"
+local gmdir = cwd.."/.gm/"
 
-local VERSION = "0.6"
+local VERSION = "0.7"
+local FILE = {
+	TARGET = ".TARGET",
+	CONFIG = "config.json",
+}
+
+local projectConfig = {
+	name = "unnamed",
+	objectFolderName = "Objects",
+	scriptFolderName = "Scripts",
+}
+
+local TERM = {
+	reset 	= "\27[0m",
+	red 	= "\27[31m",
+	green 	= "\27[32m",
+	yellow 	= "\27[33m",
+	blue 	= "\27[34m",
+	magenta = "\27[35m",
+	cyan 	= "\27[36m",
+	bold 	= "\27[1m",
+	dim 	= "\27[2m",
+}
+
+local Template = {}
+function Template:GetObject()
+	return [[{
+  "$GMObject":"",
+  "%Name":"object_name",
+  "eventList":[],
+  "managed":true,
+  "name":"object_name",
+  "overriddenProperties":[],
+  "parent":{
+    "name":"obj",
+    "path":"folders/obj.yy"
+  },
+  "parentObjectId":null,
+  "persistent":false,
+  "physicsAngularDamping":0.1,
+  "physicsDensity":0.5,
+  "physicsFriction":0.2,
+  "physicsGroup":1,
+  "physicsKinematic":false,
+  "physicsLinearDamping":0.1,
+  "physicsObject":false,
+  "physicsRestitution":0.1,
+  "physicsSensor":false,
+  "physicsShape":1,
+  "physicsShapePoints":[],
+  "physicsStartAwake":true,
+  "properties":[],
+  "resourceType":"GMObject",
+  "resourceVersion":"2.0",
+  "solid":false,
+  "spriteId":null,
+  "spriteMaskId":null,
+  "visible":true
+}]]
+end
+
+function Template:GetScript()
+	return [[{
+  "$GMScript":"v1",
+  "%Name":"script_name",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"script_name",
+  "parent":{
+    "name":"scr",
+    "path":"folders/scr.yy"
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0"
+}]]
+end
+
 
 function Input(str)
-	io.write(str)
+	io.write(TERM.bold..str..TERM.reset)
 	return io.read()
 end
 
@@ -38,7 +119,7 @@ function Path(path)
 	path = path:gsub("\n",  "")
     path = path:gsub("%./", "/")
     path = path:gsub("/+",  "/")
-    return path 
+    return path
 end
 
 function FolderExists(path)
@@ -68,12 +149,36 @@ function YY_GetEvent(eventID)
 	}
 
 	default.eventType = e.eventType
-	default.eventNum = e.eventNum
+	default.eventNum  = e.eventNum
 
 	return default
 end
 
-function YY_GetObject(name, events)
+function ParseProperties(source)
+	local p = {}
+
+	local tokens = {
+		["true"] = true,
+		["false"] = false,
+	}
+
+	for line in source:gmatch("[^\n]+") do
+		local l = line
+		l = l:gsub(" ", "")
+		l = l:gsub("\n", "")
+		l = l:gsub(";", "")
+		local key, val = l:match("([^,]+)=([^,]+)")
+		local result = val
+		if tokens[val] ~= nil then
+			result = tokens[val]
+		end
+		p[key] = result
+	end
+
+	return p
+end
+
+function YY_GetObject(name, events, properties)
 	local default = {
 		["%Name"] 		= name,
 		name 			= name,
@@ -84,25 +189,30 @@ function YY_GetObject(name, events)
 	}
 
 	for i=1, #events do
+		if (events[i] == "properties") then 
+			goto gooner
+		end
 		table.insert(default.eventList, YY_GetEvent(events[i]))
+		::gooner::
+	end
+
+	local parent = properties.parent
+
+	local n = parent
+	local folder = "objects/"..n.."/"..n..".yy"
+	default.parentObjectId = {
+		name = n,
+		path = folder,
+	}
+
+	if parent == "-1" then
+		default.parentObjectId = json.null
 	end
 
 	return default
 end
 
-local TERM = {
-	reset 	= "\27[0m",
-	red 	= "\27[31m",
-	green 	= "\27[32m",
-	yellow 	= "\27[33m",
-	blue 	= "\27[34m",
-	magenta = "\27[35m",
-	cyan 	= "\27[36m",
-	bold 	= "\27[1m",
-	dim 	= "\27[2m",
-}
-
-local GML_EVENT_ORDER = {} 
+local GML_EVENT_ORDER = {}
 
 function GML_GetFile(filename)
 	for _, val in ipairs(GML_EVENT_ORDER) do
@@ -194,6 +304,28 @@ Event("@async_system",						EVENT.OTHER, 75)
 Event("@async_audio_playback_ended",		EVENT.OTHER, 80)
 
 -- Commands
+function WriteConfigFile(config)
+	local path = Path(gmdir .. "/" .. FILE.CONFIG)
+	io.open(path, "w"):write(json.encode(config, {indent=true})):close()
+end
+
+function ReadConfigFile()
+	local path = Path(gmdir .. "/" .. FILE.CONFIG)
+	if not FileExists(path) then return end
+	
+	local file = io.open(path, "r")
+	local content = file:read("*a")
+	projectConfig = json.decode(content)
+	file:close()
+end
+
+ReadConfigFile()
+
+function GlimNotFound()
+	print(TERM.red.."Glim has not been initialized in this directory."..TERM.reset)
+	print("Initialize it by running "..TERM.bold.."'glim init'"..TERM.reset)
+end
+
 function CMD_Init()
 	local path = gmdir
 	if FolderExists(path) then
@@ -202,11 +334,17 @@ function CMD_Init()
 		return
 	end
 	os.execute("mkdir -p ./.gm/")
-	os.execute("touch ./.gm/.TARGET")
+	os.execute("touch ./.gm/"..FILE.TARGET)
 	os.execute("mkdir -p ./.gm/project")
 	os.execute("mkdir -p ./.gm/.diffs")
 	os.execute("mkdir -p ./.gm/.diffs/objects")
 	os.execute("mkdir -p ./.gm/.diffs/scripts")
+
+	WriteConfigFile {
+		name = Input("Project Name: "),
+		objectFolderName = Input("Objects Folder Name (in GameMaker): "),
+		scriptFolderName = Input("Scripts Folder Name (in GameMaker): "),
+	}
 
 	print("Glim initialized at '" .. path .. "'")
 end
@@ -218,22 +356,22 @@ function CMD_Remove()
 		print("Removed glim folder successfully.")
 		return
 	end
-	print("No glim file system exists in current directory.")
+	GlimNotFound();
 end
 
 function CMD_Load()
 	if not FolderExists(".gm") then
-		print("Glim was not initiliazed")
+		GlimNotFound()
 		return 
 	end
 
-	local file = ".gm/.TARGET"
+	local file = Path(".gm/"..FILE.TARGET)
 	file = io.open(file, "r")
 	local path_sh = file:read("*a"):gsub("%s+$", "")
 	file:close()
-	
-	local obj = path_sh .. "objects"
-	local scr = path_sh .. "scripts" 
+
+	local obj = path_sh .. "objects" -- Original project objects folder
+	local scr = path_sh .. "scripts" -- Original project scripts folder
 
 	if FolderExists(obj) then
 		os.execute("cp -rf " .. obj .. " .gm/project/")
@@ -264,7 +402,7 @@ function CMD_Set()
 
 	print("Path '" .. TERM.dim .. target .. TERM.reset .. "' set as target.")
 
-	os.execute("echo '" .. target .. "' > .gm/.TARGET")
+	os.execute("echo '" .. target .. "' > .gm/"..FILE.TARGET)
 
 	CMD_Load()
 	ConvertObjectsFolder()
@@ -275,7 +413,7 @@ end
 function CMD_Sync()
 	CMD_Restore()
 
-	local target  = gmdir..".TARGET"
+	local target  = gmdir..FILE.TARGET
 	local objects = gmdir..".diffs/objects/*"
 	local scripts = gmdir..".diffs/scripts/*"
 
@@ -306,10 +444,11 @@ function ConvertObject(path)
 		return
 	end
 	local dirname = path:match("([^/]+)/?$")
-	local newfilename = dirname .. ".gml"
-	local newfilepath = cwd .. "/.gm/project/objects/" .. newfilename
+	local newfilename = dirname..".gml"
+	local newfilepath = Path(gmdir .. "/project/objects/" .. newfilename)
 	if FileExists(newfilepath) then
 		print(TERM.blue.." [OBJECT] "..TERM.reset..newfilename..TERM.dim.." already exists."..TERM.reset)
+		os.execute("rm -r "..path)
 		return
 	end
 	local newfile = io.open(newfilepath, "w")
@@ -343,15 +482,36 @@ function ConvertObject(path)
 		local f = io.open(file.path, "r")
 		if f then
 			local content = f:read("*a")
-			content = content:gsub("\r", "")
-			content = content:gsub("\n+$", "").."\n"
-			filecontent = filecontent..file.id.."\n"..content
+			content = content:gsub("\r", "") -- CR
+			--content = content:gsub("\n+$", "") .. "\n"
+			filecontent = filecontent .. file.id .. "\n" .. content
 			f:close()
 		else
 			print("Could not open file '"..file.path.."'")
 		end
 	end
 
+	local properties = "@properties\nparent = -1;\n"
+
+	local file = io.open(gmdir..FILE.TARGET, "r")
+	local target = file:read("*l")
+	file:close()
+
+	local yy = io.open(Path(target.."/objects/"..dirname.."/"..dirname..".yy"), "r")
+	local yycontent = yy:read("*a")
+	yy:close()
+
+	local yytable = json.decode(yycontent)
+	if yytable.parentObjectId then
+		properties = "@properties\nparent = "..yytable.parentObjectId.name..";\n"
+	end
+
+	properties = properties.."persistent = "..tostring(yytable.persistent)..";\n"
+	properties = properties.."visible = "..tostring(yytable.visible)..";\n"
+	properties = properties.."solid = "..tostring(yytable.solid)..";\n"
+	properties = properties.."\n"
+
+	filecontent = properties .. filecontent
 	newfile:write(filecontent)
 	newfile:close()
 
@@ -362,7 +522,7 @@ function ConvertObject(path)
 end
 
 function ConvertObjectsFolder()
-	local path = cwd .. "/.gm/project/objects/"
+	local path = Path(cwd .. "/.gm/project/objects/")
 	if not FolderExists(path) then
 		print(TERM.red.."Folder 'objects' doesn't exist")
 		return
@@ -370,13 +530,14 @@ function ConvertObjectsFolder()
 
 	for file in lfs.dir(path) do
 		if  	file ~= "." 
-			and file ~= ".." 
-			and lfs.attributes(path, "mode") == "directory" then
+			and file ~= ".."
+			and lfs.attributes(path..file, "mode") == "directory" then
 
 			local name = file:gsub("%..*$", "")
 			ConvertObject(path..file)
 		end
 	end
+
 end
 
 function RestoreObject(path)
@@ -404,12 +565,12 @@ function RestoreObject(path)
 			code = {}
 
 			table.insert(eventIds, event)
-			
+
 		elseif currentEvent then
 			table.insert(code, line)
 		end
 	end
-	
+
 	if currentEvent then
 		events[currentEvent] = table.concat(code, "\n")
 	end
@@ -417,18 +578,32 @@ function RestoreObject(path)
 	local foldername = filename:gsub("%.gml$", "")
 	local folderpath = cwd.."/.gm/.diffs/objects/"..foldername.."/"
 	os.execute("mkdir "..folderpath.." 2>/dev/null")
-	
+
+	local properties = {
+		parent = -1,
+	}
+
 	for event, code in pairs(events) do
+		if event == "properties" then
+			properties = ParseProperties(code)
+			goto gooner
+		end
+
 		local id = GML_GetID("@"..event).file
 		local file = io.open(folderpath..id, "w")
 		if file then
-			code = code:gsub("\n+$", "")
+			--code = code:gsub("\n+$", "")
 			file:write(code, "\n")
 			file:close()
+
+			--print("@"..event)
+			--print(code)
 		end
+
+		::gooner::
 	end
 
-	local targetfile = io.open(cwd.."/.gm/.TARGET", "r")
+	local targetfile = io.open(cwd.."/.gm/"..FILE.TARGET, "r")
 	local targetpath = targetfile:read("*a")
 	targetfile:close()
 
@@ -438,9 +613,8 @@ function RestoreObject(path)
 	local yycontent = yyfile:read("*a")
 	yyfile:close()
 
-	local newobj = YY_GetObject(foldername, eventIds)
+	local newobj = YY_GetObject(foldername, eventIds, properties)
 	local originalobj = json.decode(yycontent)
-
 
 	for key, val in pairs(newobj) do
 		originalobj[key] = val
@@ -466,19 +640,17 @@ end
 
 -- Scripts
 function ConvertScriptsFolder()
-	local path = cwd .. "/.gm/project/scripts/"
+	local path = Path(cwd .. "/.gm/project/scripts/")
 	if not FolderExists(path) then
 		print(TERM.dim.."Folder 'scripts' not found."..TERM.reset)
 		return
 	end
 
 	for file in lfs.dir(path) do
-		if file ~= "." and file ~= ".." and lfs.attributes(path, "mode") == "directory" then
-			if FolderExists(path..file) then
-				os.execute("mv "..path..file.."/* "..path)
-				os.execute("rm -r "..path..file)
-				print(TERM.red.." [SCRIPT] "..TERM.reset..file..".gml"..TERM.dim.." was moved."..TERM.reset)
-			end
+		if file ~= "." and file ~= ".." and lfs.attributes(path..file, "mode") == "directory" then
+			os.execute("mv "..path..file.."/* "..path)
+			os.execute("rm -r "..path..file)
+			print(TERM.red.." [SCRIPT] "..TERM.reset..file..".gml"..TERM.dim.." was moved."..TERM.reset)
 		end
 	end
 end
@@ -489,7 +661,7 @@ function RestoreScriptsFolder()
 	if not FolderExists(path) then
 		return
 	end
-	
+
 	for file in lfs.dir(path) do
 		if file ~= "." and file ~= ".." then 
 			print(TERM.dim.."- Restoring '"..file..TERM.red.."' [SCRIPT]"..TERM.reset)
@@ -562,15 +734,99 @@ function CMD_Reload(flags)
 	end
 end
 
+function CMD_Status()
+	if not FolderExists(gmdir) then
+		print("")
+	end
+end
+
+function CMD_Create()
+	if #arg < 2 then
+		print("Usage: glim create <obj/scr>")
+		return
+	end
+
+	if arg[2] ~= "obj" and arg[2] ~= "scr" then
+		print("Usage: glim create <obj/scr>")
+		return
+	end
+
+	local asset 	= arg[2] == "obj" and "Object" or "Script"
+	local folder 	= arg[2] == "obj" and "objects" or "scripts"
+	local template 	= arg[2] == "obj" and Template:GetObject() or Template:GetScript()
+
+	local name = Input("  filename: ")
+
+	local path = Path(cwd.."/"..projectConfig.name..".yyp")
+	os.execute("cp "..path.." "..path..".backup")
+	local file = io.open(path, "r")
+	local content = file:read("*a")
+	file:close()
+
+	local t = json.decode(content, 1, json.null)
+
+	table.insert(t.resources, {
+		id = {
+			name = name,
+			path = folder.."/"..name.."/"..name..".yy",
+		}
+	})
+
+	local result = json.encode(t, {indent = true})
+	io.open(path, "w"):write(result):close()
+	
+	template = template:gsub("object_name", name)
+	template = template:gsub("script_name", name)
+
+	local assetfolder = cwd.."/"..folder.."/"..name
+	os.execute("mkdir -p "..assetfolder.." 2>/dev/null")
+
+	local script = Path(assetfolder.."/"..name..".gml")
+	local yy = Path(assetfolder.."/"..name..".yy")
+	local file = io.open(yy, "w")
+	file:write(template)
+	file:close()
+
+	if arg[2] == "scr" then
+		local file = io.open(script, "w")
+		file:write(string.format([[function %s() {
+	
+}]], name))
+	end
+
+	print(asset.." '"..name.."'".." was created.")
+end
+
+function CMD_List()
+	print(TERM.blue.."[OBJECTS]"..TERM.reset)
+	for file in lfs.dir(gmdir.."project/objects/") do
+		if file ~= "." and file ~= ".." then 
+			print(" - "..file)
+		end
+	end
+
+	print("")
+
+	print(TERM.red.."[SCRIPTS]"..TERM.reset)
+	for file in lfs.dir(gmdir.."project/scripts/") do
+		if file ~= "." and file ~= ".." then 
+			print(" - "..file)
+		end
+	end
+end
+
 local commands = {
-	{"init", 		CMD_Init, 		"Initializes glim in current directory"},
-	{"remove", 		CMD_Remove,		"Removes .gm folder"},
-	{"set", 		CMD_Set, 		"Set GameMaker project path and convert objects and scripts into .gm/project/", 1},
-	{"convert", 	CMD_Restore,	"Converts .gm/project to GameMaker compatible structure in .gm/.diffs/"},
-	{"sync", 		CMD_Sync,		"Sync files with project target"},
-	{"reload", 		CMD_Reload,		"Reload files from target GameMaker project (erases any progress in .gm/project/)"},
-	{"clean", 		CMD_Clean,		"Cleans generated files in .diffs/"},
-	{"version", 	CMD_Version,	"See version"},
+	{ "init", 			CMD_Init, 			"Initializes glim in current directory." },
+	{ "remove", 		CMD_Remove,			"Removes .gm folder." },
+	{ "set", 			CMD_Set, 			"Set GameMaker project path and convert objects and scripts into .gm/project/", 1 },
+	{ "convert", 		CMD_Restore,		"Converts .gm/project to GameMaker compatible structure in .gm/.diffs/" },
+	{ "sync", 			CMD_Sync,			"Sync files with project target." },
+	{ "reload", 		CMD_Reload,			"Reload files from target GameMaker project. FLAGS: --rebase" },
+	{ "status", 		CMD_Status,			"Prints status of current project." },
+	{ "create", 		CMD_Create,			"Create objects/scripts from command line." },
+	{ "list", 			CMD_List,			"List project files." },
+	{ "clean", 			CMD_Clean,			"Cleans generated files in .diffs/" },
+	{ "version", 		CMD_Version,		"See version." },
 }
 
 if arg[1] == "__complete" then

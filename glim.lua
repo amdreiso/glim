@@ -22,11 +22,6 @@
 -- User does shenanigans with generated objects/scripts
 -- Glim Syncs the project, Restoring objects/scripts into PATH 
 
-local source = debug.getinfo(1, "S").source:sub(2)
-local dir = source:match("(.*/)")
-
-package.path = dir .. "?.lua;" .. package.path
-
 local lfs 	= require("lfs")
 local json 	= require("dkjson")
 local cwd 	= lfs.currentdir()
@@ -189,7 +184,7 @@ function YY_GetObject(name, events, properties)
 	}
 
 	for i=1, #events do
-		if (events[i] == "properties") then 
+		if events[i] == "properties" then 
 			goto gooner
 		end
 		table.insert(default.eventList, YY_GetEvent(events[i]))
@@ -306,7 +301,9 @@ Event("@async_audio_playback_ended",		EVENT.OTHER, 80)
 -- Commands
 function WriteConfigFile(config)
 	local path = Path(gmdir .. "/" .. FILE.CONFIG)
-	io.open(path, "w"):write(json.encode(config, {indent=true})):close()
+	local content = json.encode(config, {indent=true})
+	io.open(path, "w"):write(content):close()
+	print(content)
 end
 
 function ReadConfigFile()
@@ -326,6 +323,18 @@ function GlimNotFound()
 	print("Initialize it by running "..TERM.bold.."'glim init'"..TERM.reset)
 end
 
+function AskTheQuestions()
+	WriteConfigFile {
+		name = Input("Project Name: "),
+		objectFolderName = Input("Objects Folder Name (in GameMaker): "),
+		scriptFolderName = Input("Scripts Folder Name (in GameMaker): ")
+	}
+end
+
+function CMD_Config()
+	AskTheQuestions()
+end
+
 function CMD_Init()
 	local path = gmdir
 	if FolderExists(path) then
@@ -333,6 +342,7 @@ function CMD_Init()
 		print("path '" .. path .. "' already exists in this directory.")
 		return
 	end
+
 	os.execute("mkdir -p ./.gm/")
 	os.execute("touch ./.gm/"..FILE.TARGET)
 	os.execute("mkdir -p ./.gm/project")
@@ -340,12 +350,8 @@ function CMD_Init()
 	os.execute("mkdir -p ./.gm/.diffs/objects")
 	os.execute("mkdir -p ./.gm/.diffs/scripts")
 
-	WriteConfigFile {
-		name = Input("Project Name: "),
-		objectFolderName = Input("Objects Folder Name (in GameMaker): "),
-		scriptFolderName = Input("Scripts Folder Name (in GameMaker): "),
-	}
-
+	AskTheQuestions()
+	
 	print("Glim initialized at '" .. path .. "'")
 end
 
@@ -592,12 +598,8 @@ function RestoreObject(path)
 		local id = GML_GetID("@"..event).file
 		local file = io.open(folderpath..id, "w")
 		if file then
-			--code = code:gsub("\n+$", "")
 			file:write(code, "\n")
 			file:close()
-
-			--print("@"..event)
-			--print(code)
 		end
 
 		::gooner::
@@ -758,7 +760,8 @@ function CMD_Create()
 	local name = Input("  filename: ")
 
 	local path = Path(cwd.."/"..projectConfig.name..".yyp")
-	os.execute("cp "..path.." "..path..".backup")
+	local pathShell = path:gsub(" ", "\\ ")
+	os.execute("cp "..pathShell.." "..pathShell..".backup")
 	local file = io.open(path, "r")
 	local content = file:read("*a")
 	file:close()
@@ -816,17 +819,18 @@ function CMD_List()
 end
 
 local commands = {
-	{ "init", 			CMD_Init, 			"Initializes glim in current directory." },
-	{ "remove", 		CMD_Remove,			"Removes .gm folder." },
-	{ "set", 			CMD_Set, 			"Set GameMaker project path and convert objects and scripts into .gm/project/", 1 },
-	{ "convert", 		CMD_Restore,		"Converts .gm/project to GameMaker compatible structure in .gm/.diffs/" },
-	{ "sync", 			CMD_Sync,			"Sync files with project target." },
-	{ "reload", 		CMD_Reload,			"Reload files from target GameMaker project. FLAGS: --rebase" },
-	{ "status", 		CMD_Status,			"Prints status of current project." },
-	{ "create", 		CMD_Create,			"Create objects/scripts from command line." },
-	{ "list", 			CMD_List,			"List project files." },
-	{ "clean", 			CMD_Clean,			"Cleans generated files in .diffs/" },
-	{ "version", 		CMD_Version,		"See version." },
+	{ "init", 		CMD_Init, 		"Initializes glim in current directory." },
+	{ "remove", 	CMD_Remove,		"Removes .gm folder." },
+	{ "set", 		CMD_Set, 		"Set GameMaker project path and convert objects and scripts into .gm/project/", 1 },
+	{ "convert", 	CMD_Restore,	"Converts .gm/project to GameMaker compatible structure in .gm/.diffs/" },
+	{ "sync", 		CMD_Sync,		"Sync files with project target." },
+	{ "reload", 	CMD_Reload,		"Reload files from target GameMaker project. FLAGS: --rebase" },
+	{ "status", 	CMD_Status,		"Prints status of current project." },
+	{ "create", 	CMD_Create,		"Create objects/scripts from command line." },
+	{ "list", 		CMD_List,		"List project files." },
+	{ "clean", 		CMD_Clean,		"Cleans generated files in .diffs/" },
+	{ "config", 	CMD_Config,		"Creates a new config.json." },
+	{ "version", 	CMD_Version,	"See version." },
 }
 
 if arg[1] == "__complete" then
@@ -838,18 +842,30 @@ end
 
 function PrintUsage()
 	print("Usage:")
+
+	local printUsageGap = 0 
 	for i=1, #commands do
-		print("    " .. TERM.bold .. commands[i][1] .. TERM.reset .. " - " .. TERM.dim .. commands[i][3] .. TERM.reset)
+		local l = commands[i][1]:len()
+		if l > printUsageGap then
+			printUsageGap = l
+		end
+	end
+
+	for i=1, #commands do
+		local name = commands[i][1]
+		local size = printUsageGap - name:len()
+		name = name .. string.rep(" ", size)
+		print("    " .. TERM.bold .. name .. TERM.reset .. " - " .. TERM.dim .. commands[i][3] .. TERM.reset)
 	end
 end
 
 function Run() 
 	local found = false
 	for _, cmd in ipairs(commands) do
-		local name 	= cmd[1]
-		local fn 	= cmd[2]
-		local desc 	= cmd[3]
-		local args 	= cmd[4] or 0
+		local name = cmd[1]
+		local fn   = cmd[2]
+		local desc = cmd[3]
+		local args = cmd[4] or 0
 
 		if name == arg[1] then
 			local flags = {}

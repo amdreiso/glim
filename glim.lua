@@ -104,7 +104,6 @@ function Template:GetScript()
 }]]
 end
 
-
 function Input(str)
 	io.write(TERM.bold..str..TERM.reset)
 	return io.read()
@@ -762,16 +761,47 @@ function CMD_Create()
 	local path = Path(cwd.."/"..projectConfig.name..".yyp")
 	local pathShell = path:gsub(" ", "\\ ")
 	os.execute("cp "..pathShell.." "..pathShell..".backup")
+
 	local file = io.open(path, "r")
 	local content = file:read("*a")
 	file:close()
 
 	local t = json.decode(content, 1, json.null)
 
+	local Folders = t.Folders
+	local folders = {}
+
+	for val, key in pairs(Folders) do
+		local fpath = key.folderPath
+		local fullpath = key.folderPath
+		fpath = fpath:gsub("folders/", "")
+		fpath = fpath:gsub(".yy", "")
+
+		print(TERM.yellow.." [FOLDER] "..TERM.red.."["..val.."] "..TERM.reset..fpath)
+		folders[val] = {name=key.name,path=fullpath}
+	end
+
+	local where = Input("Where do you want your Object in: ")
+	assert(type(tonumber(where)) == "number", "Folder index must be a number.")
+
+	local folderid = tonumber(where)
+	assert(folderid > 0 and folderid < #folders, "Folder index outside boundaries.")
+
+	local foldername = folders[folderid].name
+	local folderpath = folders[folderid].path
+
+	-- Changing template parent folder
+	local templateTable = json.decode(template, 1, json.null)
+	templateTable.parent.name = foldername
+	templateTable.parent.path = folderpath
+
+	template = json.encode(templateTable, {indent = true})
+
+	local objectResourcePath = folder.."/"..name.."/"..name..".yy" 
 	table.insert(t.resources, {
 		id = {
 			name = name,
-			path = folder.."/"..name.."/"..name..".yy",
+			path = objectResourcePath,
 		}
 	})
 

@@ -116,6 +116,10 @@ function Path(path)
     return path
 end
 
+function string.starts(String,Start)
+   return string.sub(String,1,string.len(Start))==Start
+end
+
 function FolderExists(path)
 	local ok = os.execute("test -d '" .. path .. "'")
   	return ok == true or ok == 0
@@ -736,9 +740,7 @@ function CMD_Reload(flags)
 end
 
 function CMD_Status()
-	if not FolderExists(gmdir) then
-		print("")
-	end
+
 end
 
 function CMD_Create()
@@ -752,9 +754,10 @@ function CMD_Create()
 		return
 	end
 
-	local asset 	= arg[2] == "obj" and "Object" or "Script"
-	local folder 	= arg[2] == "obj" and "objects" or "scripts"
-	local template 	= arg[2] == "obj" and Template:GetObject() or Template:GetScript()
+	local asset 			= arg[2] == "obj" and "Object" or "Script"
+	local folder 			= arg[2] == "obj" and "objects" or "scripts"
+	local template 			= arg[2] == "obj" and Template:GetObject() or Template:GetScript()
+	local folderNameConfig 	= arg[2] == "obj" and projectConfig.objectFolderName or projectConfig.scriptFolderName
 
 	local name = Input("  filename: ")
 
@@ -770,6 +773,7 @@ function CMD_Create()
 
 	local Folders = t.Folders
 	local folders = {}
+	local folderIndexValue = 0
 
 	for val, key in pairs(Folders) do
 		local fpath = key.folderPath
@@ -777,8 +781,12 @@ function CMD_Create()
 		fpath = fpath:gsub("folders/", "")
 		fpath = fpath:gsub(".yy", "")
 
-		print(TERM.yellow.." [FOLDER] "..TERM.red.."["..val.."] "..TERM.reset..fpath)
-		folders[val] = {name=key.name,path=fullpath}
+		if string.starts(fpath, arg[2]) then
+			folderIndexValue = folderIndexValue + 1
+
+			print(TERM.yellow.." [FOLDER] "..TERM.red.."["..folderIndexValue.."] "..TERM.reset..fpath)
+			folders[folderIndexValue] = { name = key.name, path = fullpath}
+		end
 	end
 
 	local where = Input("Where do you want your Object in: ")
@@ -786,6 +794,8 @@ function CMD_Create()
 
 	local folderid = tonumber(where)
 	assert(folderid > 0 and folderid < #folders, "Folder index outside boundaries.")
+
+	print("Selected folder: '"..folders[folderid].path.."'")
 
 	local foldername = folders[folderid].name
 	local folderpath = folders[folderid].path
@@ -831,21 +841,26 @@ function CMD_Create()
 end
 
 function CMD_List()
-	print(TERM.blue.."[OBJECTS]"..TERM.reset)
+	local objects = 0
+	local scripts = 0
+
 	for file in lfs.dir(gmdir.."project/objects/") do
 		if file ~= "." and file ~= ".." then 
-			print(" - "..file)
+			print(TERM.blue.."[OBJECT]"..TERM.reset.." - "..file)
+			objects = objects + 1
+		end
+	end
+
+	for file in lfs.dir(gmdir.."project/scripts/") do
+		if file ~= "." and file ~= ".." then 
+			print(TERM.red.."[SCRIPT]"..TERM.reset.." - "..file)
+			scripts = scripts + 1
 		end
 	end
 
 	print("")
-
-	print(TERM.red.."[SCRIPTS]"..TERM.reset)
-	for file in lfs.dir(gmdir.."project/scripts/") do
-		if file ~= "." and file ~= ".." then 
-			print(" - "..file)
-		end
-	end
+	print(TERM.bold.." - Objects: "..TERM.reset..tostring(objects))
+	print(TERM.bold.." - Scripts: "..TERM.reset..tostring(scripts))
 end
 
 local commands = {

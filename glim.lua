@@ -655,6 +655,7 @@ function ConvertScriptsFolder()
 		if file ~= "." and file ~= ".." and lfs.attributes(path..file, "mode") == "directory" then
 			os.execute("mv "..path..file.."/* "..path)
 			os.execute("rm -r "..path..file)
+			os.execute("sed -i 's/\r$//' "..path..file)
 			print(TERM.red.." [SCRIPT] "..TERM.reset..file..".gml"..TERM.dim.." was moved."..TERM.reset)
 		end
 	end
